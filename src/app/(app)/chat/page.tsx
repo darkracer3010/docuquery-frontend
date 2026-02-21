@@ -1,0 +1,453 @@
+"use client";
+
+import { useState, useEffect, useRef } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import {
+    Send,
+    Sparkles,
+    User,
+    FileText,
+    ChevronDown,
+    ChevronUp,
+    Zap,
+    BookOpen,
+    Search,
+    X,
+    Check,
+} from "lucide-react";
+import { useSearchParams } from "next/navigation";
+import { api, type QAResponse, type SourceCitation, type Document } from "@/lib/api";
+
+interface Message {
+    id: string;
+    role: "user" | "assistant";
+    content: string;
+    sources?: SourceCitation[];
+    metadata?: QAResponse["retrieval_metadata"];
+    loading?: boolean;
+}
+
+const SUGGESTIONS = [
+    "What are the key findings in this document?",
+    "Summarize the main points",
+    "What data or statistics are mentioned?",
+    "Explain the conclusions",
+];
+
+export default function ChatPage() {
+    const searchParams = useSearchParams();
+    const [messages, setMessages] = useState<Message[]>([]);
+    const [input, setInput] = useState("");
+    const [loading, setLoading] = useState(false);
+    const [documents, setDocuments] = useState<Document[]>([]);
+    const [selectedDocs, setSelectedDocs] = useState<string[]>([]);
+    const [showDocPicker, setShowDocPicker] = useState(false);
+    const scrollRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        api.listDocuments().then((res) => {
+            const readyDocs = res.documents.filter((d) => d.status === "ready");
+            setDocuments(readyDocs);
+
+            const docId = searchParams.get("doc");
+            if (docId && readyDocs.some((d) => d.id === docId)) {
+                setSelectedDocs([docId]);
+            }
+        });
+    }, [searchParams]);
+
+    useEffect(() => {
+        scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
+    }, [messages]);
+
+    const handleSend = async (question?: string) => {
+        const q = question || input.trim();
+        if (!q || loading) return;
+
+        const userMsg: Message = {
+            id: Date.now().toString(),
+            role: "user",
+            content: q,
+        };
+
+        const loadingMsg: Message = {
+            id: (Date.now() + 1).toString(),
+            role: "assistant",
+            content: "",
+            loading: true,
+        };
+
+        setMessages((prev) => [...prev, userMsg, loadingMsg]);
+        setInput("");
+        setLoading(true);
+
+        try {
+            const response = await api.askQuestion(
+                q,
+                selectedDocs.length > 0 ? selectedDocs : undefined
+            );
+
+            setMessages((prev) =>
+                prev.map((m) =>
+                    m.id === loadingMsg.id
+                        ? {
+                            ...m,
+                            content: response.answer,
+                            sources: response.sources,
+                            metadata: response.retrieval_metadata,
+                            loading: false,
+                        }
+                        : m
+                )
+            );
+        } catch (err) {
+            setMessages((prev) =>
+                prev.map((m) =>
+                    m.id === loadingMsg.id
+                        ? {
+                            ...m,
+                            content: `Error: ${err instanceof Error ? err.message : "Failed to get answer"}`,
+                            loading: false,
+                        }
+                        : m
+                )
+            );
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const toggleDoc = (id: string) => {
+        setSelectedDocs((prev) =>
+            prev.includes(id) ? prev.filter((d) => d !== id) : [...prev, id]
+        );
+    };
+
+    return (
+        <div className="h-full flex flex-col">
+            {/* Header */}
+            <div
+                className="px-6 py-3 border-b flex items-center justify-between flex-shrink-0"
+                style={{ borderColor: "var(--border)", background: "var(--card)" }}
+            >
+                <div className="flex items-center gap-2">
+                    <Sparkles size={18} style={{ color: "var(--primary)" }} />
+                    <h1 className="font-semibold" style={{ color: "var(--foreground)" }}>
+                        DocuQuery Chat
+                    </h1>
+                </div>
+
+                {/* Document filter */}
+                <div className="relative">
+                    <button
+                        onClick={() => setShowDocPicker(!showDocPicker)}
+                        className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm transition-colors border"
+                        style={{
+                            background: "var(--secondary)",
+                            borderColor: "var(--border)",
+                            color: "var(--foreground)",
+                        }}
+                    >
+                        <FileText size={14} />
+                        {selectedDocs.length > 0 ? `${selectedDocs.length} doc(s)` : "All documents"}
+                        <ChevronDown size={14} />
+                    </button>
+
+                    <AnimatePresence>
+                        {showDocPicker && (
+                            <motion.div
+                                initial={{ opacity: 0, y: -8 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                exit={{ opacity: 0, y: -8 }}
+                                className="absolute right-0 top-full mt-2 w-72 rounded-xl border p-2 z-50 shadow-lg"
+                                style={{ background: "var(--card)", borderColor: "var(--border)" }}
+                            >
+                                <div className="flex items-center justify-between px-2 pb-2 border-b" style={{ borderColor: "var(--border)" }}>
+                                    <span className="text-xs font-medium" style={{ color: "var(--muted-foreground)" }}>
+                                        Filter by document
+                                    </span>
+                                    {selectedDocs.length > 0 && (
+                                        <button
+                                            onClick={() => setSelectedDocs([])}
+                                            className="text-xs px-2 py-0.5 rounded"
+                                            style={{ color: "var(--primary)" }}
+                                        >
+                                            Clear
+                                        </button>
+                                    )}
+                                </div>
+                                <div className="max-h-48 overflow-y-auto mt-1">
+                                    {documents.map((doc) => (
+                                        <button
+                                            key={doc.id}
+                                            onClick={() => toggleDoc(doc.id)}
+                                            className="w-full flex items-center gap-2 px-2 py-2 rounded-lg text-sm text-left transition-colors hover:opacity-80"
+                                            style={{
+                                                background: selectedDocs.includes(doc.id)
+                                                    ? "rgba(99,102,241,0.1)"
+                                                    : "transparent",
+                                                color: "var(--foreground)",
+                                            }}
+                                        >
+                                            <div
+                                                className="w-4 h-4 rounded border flex items-center justify-center flex-shrink-0"
+                                                style={{
+                                                    borderColor: selectedDocs.includes(doc.id)
+                                                        ? "var(--primary)"
+                                                        : "var(--border)",
+                                                    background: selectedDocs.includes(doc.id)
+                                                        ? "var(--primary)"
+                                                        : "transparent",
+                                                }}
+                                            >
+                                                {selectedDocs.includes(doc.id) && <Check size={10} color="white" />}
+                                            </div>
+                                            <span className="truncate">{doc.file_name}</span>
+                                        </button>
+                                    ))}
+                                    {documents.length === 0 && (
+                                        <p className="text-xs text-center py-4" style={{ color: "var(--muted-foreground)" }}>
+                                            No documents ready
+                                        </p>
+                                    )}
+                                </div>
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
+                </div>
+            </div>
+
+            {/* Messages */}
+            <div ref={scrollRef} className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
+                {messages.length === 0 ? (
+                    <EmptyState onSuggestion={handleSend} />
+                ) : (
+                    <AnimatePresence>
+                        {messages.map((msg) => (
+                            <MessageBubble key={msg.id} message={msg} />
+                        ))}
+                    </AnimatePresence>
+                )}
+            </div>
+
+            {/* Input */}
+            <div className="px-6 pb-4 pt-2 flex-shrink-0">
+                <div
+                    className="flex items-center gap-2 rounded-xl border px-4 py-2 transition-all focus-within:ring-2"
+                    style={{
+                        background: "var(--card)",
+                        borderColor: "var(--border)",
+                        ["--tw-ring-color" as string]: "var(--ring)",
+                    }}
+                >
+                    <input
+                        type="text"
+                        value={input}
+                        onChange={(e) => setInput(e.target.value)}
+                        onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSend()}
+                        placeholder="Ask a question about your documents..."
+                        className="flex-1 py-2 bg-transparent outline-none text-sm"
+                        style={{ color: "var(--foreground)" }}
+                        disabled={loading}
+                    />
+                    <motion.button
+                        whileHover={{ scale: 1.1 }}
+                        whileTap={{ scale: 0.9 }}
+                        onClick={() => handleSend()}
+                        disabled={loading || !input.trim()}
+                        className="p-2 rounded-lg transition-colors disabled:opacity-30"
+                        style={{ background: "var(--primary)", color: "white" }}
+                    >
+                        <Send size={16} />
+                    </motion.button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+// ── Empty State ────────────────────────────────────────────────
+
+function EmptyState({ onSuggestion }: { onSuggestion: (q: string) => void }) {
+    return (
+        <div className="h-full flex flex-col items-center justify-center">
+            <motion.div
+                initial={{ scale: 0 }}
+                animate={{ scale: 1 }}
+                transition={{ type: "spring" }}
+                className="w-16 h-16 rounded-2xl flex items-center justify-center mb-4 animate-pulse-glow"
+                style={{ background: "var(--primary)" }}
+            >
+                <Sparkles size={28} color="white" />
+            </motion.div>
+            <h2 className="text-xl font-semibold mb-2" style={{ color: "var(--foreground)" }}>
+                What would you like to know?
+            </h2>
+            <p className="text-sm mb-6" style={{ color: "var(--muted-foreground)" }}>
+                Ask questions about your uploaded documents
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-w-lg w-full">
+                {SUGGESTIONS.map((s, i) => (
+                    <motion.button
+                        key={i}
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: 0.1 * i }}
+                        whileHover={{ scale: 1.02, y: -2 }}
+                        onClick={() => onSuggestion(s)}
+                        className="text-left px-4 py-3 rounded-xl border text-sm transition-all"
+                        style={{
+                            background: "var(--card)",
+                            borderColor: "var(--border)",
+                            color: "var(--foreground)",
+                        }}
+                    >
+                        <Search size={14} className="inline mr-2" style={{ color: "var(--primary)" }} />
+                        {s}
+                    </motion.button>
+                ))}
+            </div>
+        </div>
+    );
+}
+
+// ── Message Bubble ─────────────────────────────────────────────
+
+function MessageBubble({ message }: { message: Message }) {
+    const [showSources, setShowSources] = useState(false);
+    const isUser = message.role === "user";
+
+    return (
+        <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className={`flex gap-3 ${isUser ? "flex-row-reverse" : ""}`}
+        >
+            {/* Avatar */}
+            <div
+                className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+                style={{
+                    background: isUser ? "var(--accent)" : "var(--primary)",
+                }}
+            >
+                {isUser ? <User size={16} color="white" /> : <Sparkles size={16} color="white" />}
+            </div>
+
+            {/* Content */}
+            <div className={`max-w-2xl ${isUser ? "text-right" : ""}`}>
+                <div
+                    className="rounded-2xl px-4 py-3 text-sm leading-relaxed"
+                    style={{
+                        background: isUser ? "var(--primary)" : "var(--card)",
+                        color: isUser ? "white" : "var(--foreground)",
+                        border: isUser ? "none" : "1px solid var(--border)",
+                    }}
+                >
+                    {message.loading ? (
+                        <div className="flex gap-1 py-1">
+                            <span className="w-2 h-2 rounded-full typing-dot" style={{ background: "var(--primary)" }} />
+                            <span className="w-2 h-2 rounded-full typing-dot" style={{ background: "var(--primary)" }} />
+                            <span className="w-2 h-2 rounded-full typing-dot" style={{ background: "var(--primary)" }} />
+                        </div>
+                    ) : (
+                        <div className="whitespace-pre-wrap">{message.content}</div>
+                    )}
+                </div>
+
+                {/* Metadata badges */}
+                {message.metadata && !message.loading && (
+                    <div className="flex items-center gap-2 mt-2 flex-wrap">
+                        {message.metadata.cache_hit && (
+                            <span
+                                className="text-xs px-2 py-0.5 rounded-full flex items-center gap-1"
+                                style={{ background: "rgba(34,197,94,0.1)", color: "var(--success)" }}
+                            >
+                                <Zap size={10} /> Cached
+                            </span>
+                        )}
+                        <span
+                            className="text-xs px-2 py-0.5 rounded-full"
+                            style={{ background: "var(--secondary)", color: "var(--muted-foreground)" }}
+                        >
+                            {message.metadata.after_reranking} sources used
+                        </span>
+                    </div>
+                )}
+
+                {/* Sources */}
+                {message.sources && message.sources.length > 0 && !message.loading && (
+                    <div className="mt-2">
+                        <button
+                            onClick={() => setShowSources(!showSources)}
+                            className="flex items-center gap-1 text-xs font-medium transition-colors"
+                            style={{ color: "var(--primary)" }}
+                        >
+                            <BookOpen size={12} />
+                            {message.sources.length} source(s)
+                            {showSources ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                        </button>
+
+                        <AnimatePresence>
+                            {showSources && (
+                                <motion.div
+                                    initial={{ opacity: 0, height: 0 }}
+                                    animate={{ opacity: 1, height: "auto" }}
+                                    exit={{ opacity: 0, height: 0 }}
+                                    className="mt-2 space-y-2"
+                                >
+                                    {message.sources.map((src) => (
+                                        <SourceCard key={src.citation_index} source={src} />
+                                    ))}
+                                </motion.div>
+                            )}
+                        </AnimatePresence>
+                    </div>
+                )}
+            </div>
+        </motion.div>
+    );
+}
+
+// ── Source Card ─────────────────────────────────────────────────
+
+function SourceCard({ source }: { source: SourceCitation }) {
+    return (
+        <div
+            className="rounded-lg p-3 border text-xs"
+            style={{
+                background: "var(--secondary)",
+                borderColor: "var(--border)",
+            }}
+        >
+            <div className="flex items-center justify-between mb-1.5">
+                <span className="font-medium flex items-center gap-1" style={{ color: "var(--foreground)" }}>
+                    <FileText size={12} style={{ color: "var(--primary)" }} />
+                    [{source.citation_index}] {source.document_name}
+                    {source.page_number && (
+                        <span style={{ color: "var(--muted-foreground)" }}> · p.{source.page_number}</span>
+                    )}
+                </span>
+                <div className="flex gap-2">
+                    <span
+                        className="px-1.5 py-0.5 rounded text-xs"
+                        style={{
+                            background:
+                                source.relevance_score >= 0.7
+                                    ? "rgba(34,197,94,0.15)"
+                                    : "rgba(245,158,11,0.15)",
+                            color: source.relevance_score >= 0.7 ? "var(--success)" : "var(--warning)",
+                        }}
+                    >
+                        Relevance: {(source.relevance_score * 100).toFixed(0)}%
+                    </span>
+                </div>
+            </div>
+            <p style={{ color: "var(--muted-foreground)" }} className="leading-relaxed">
+                {source.chunk_snippet}
+            </p>
+            <p className="mt-1.5 italic" style={{ color: "var(--primary)" }}>
+                {source.relevance_justification}
+            </p>
+        </div>
+    );
+}
