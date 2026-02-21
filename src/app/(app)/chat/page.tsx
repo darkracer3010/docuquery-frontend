@@ -15,16 +15,17 @@ import {
     X,
     Check,
 } from "lucide-react";
-import { useSearchParams } from "next/navigation";
-import { api, type QAResponse, type SourceCitation, type Document } from "@/lib/api";
+import { useSearchParams, useRouter } from "next/navigation";
+import { api, type QAResponse, type SourceCitation, type Document, type RetrievalMetadata } from "@/lib/api";
 
 interface Message {
     id: string;
     role: "user" | "assistant";
     content: string;
     sources?: SourceCitation[];
-    metadata?: QAResponse["retrieval_metadata"];
+    metadata?: RetrievalMetadata;
     loading?: boolean;
+    conversation_id?: string;
 }
 
 const SUGGESTIONS = [
@@ -36,12 +37,17 @@ const SUGGESTIONS = [
 
 export default function ChatPage() {
     const searchParams = useSearchParams();
+    const router = useRouter(); // We need router to update URL
+    const activeConvId = searchParams.get("id");
+
     const [messages, setMessages] = useState<Message[]>([]);
     const [input, setInput] = useState("");
     const [loading, setLoading] = useState(false);
     const [documents, setDocuments] = useState<Document[]>([]);
     const [selectedDocs, setSelectedDocs] = useState<string[]>([]);
     const [showDocPicker, setShowDocPicker] = useState(false);
+    const [conversationId, setConversationId] = useState<string | undefined>(activeConvId || undefined);
+
     const scrollRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -55,6 +61,37 @@ export default function ChatPage() {
             }
         });
     }, [searchParams]);
+
+    // Load messages if conversation ID changes
+    useEffect(() => {
+        if (activeConvId) {
+            setConversationId(activeConvId);
+            loadMessages(activeConvId);
+        } else {
+            setConversationId(undefined);
+            setMessages([]);
+        }
+    }, [activeConvId]);
+
+    const loadMessages = async (id: string) => {
+        setLoading(true);
+        try {
+            const history = await api.getConversationMessages(id);
+            const formatted: Message[] = history.map((m) => ({
+                id: m.id,
+                role: m.role,
+                content: m.content,
+                sources: m.sources,
+                metadata: m.metadata,
+                conversation_id: m.conversation_id
+            }));
+            setMessages(formatted);
+        } catch (err) {
+            console.error("Failed to load history", err);
+        } finally {
+            setLoading(false);
+        }
+    };
 
     useEffect(() => {
         scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
@@ -70,8 +107,9 @@ export default function ChatPage() {
             content: q,
         };
 
+        const assistantMsgId = (Date.now() + 1).toString();
         const loadingMsg: Message = {
-            id: (Date.now() + 1).toString(),
+            id: assistantMsgId,
             role: "assistant",
             content: "",
             loading: true,
@@ -81,40 +119,61 @@ export default function ChatPage() {
         setInput("");
         setLoading(true);
 
-        try {
-            const response = await api.askQuestion(
-                q,
-                selectedDocs.length > 0 ? selectedDocs : undefined
-            );
+        // Keep track if we need to update the URL after the first response
+        let firstToken = true;
 
-            setMessages((prev) =>
-                prev.map((m) =>
-                    m.id === loadingMsg.id
-                        ? {
-                            ...m,
-                            content: response.answer,
-                            sources: response.sources,
-                            metadata: response.retrieval_metadata,
-                            loading: false,
-                        }
-                        : m
-                )
-            );
-        } catch (err) {
-            setMessages((prev) =>
-                prev.map((m) =>
-                    m.id === loadingMsg.id
-                        ? {
-                            ...m,
-                            content: `Error: ${err instanceof Error ? err.message : "Failed to get answer"}`,
-                            loading: false,
-                        }
-                        : m
-                )
-            );
-        } finally {
-            setLoading(false);
-        }
+        await api.askQuestionStream(
+            q,
+            selectedDocs.length > 0 ? selectedDocs : undefined,
+            conversationId,
+            {
+                onToken: (token) => {
+                    setMessages((prev) =>
+                        prev.map((m) =>
+                            m.id === assistantMsgId
+                                ? { ...m, content: m.content + token, loading: false }
+                                : m
+                        )
+                    );
+                },
+                onSources: (sources) => {
+                    setMessages((prev) =>
+                        prev.map((m) =>
+                            m.id === assistantMsgId ? { ...m, sources } : m
+                        )
+                    );
+                },
+                onMetadata: (metadata) => {
+                    // Update conversationId if it's a new conversation
+                    if (metadata.conversation_id && !conversationId) {
+                        setConversationId(metadata.conversation_id);
+                        // Update URL without full refresh to preserve state
+                        const url = new URL(window.location.href);
+                        url.searchParams.set("id", metadata.conversation_id);
+                        window.history.pushState({}, "", url.toString());
+                    }
+
+                    setMessages((prev) =>
+                        prev.map((m) =>
+                            m.id === assistantMsgId ? { ...m, metadata } : m
+                        )
+                    );
+                },
+                onDone: () => {
+                    setLoading(false);
+                },
+                onError: (error) => {
+                    setMessages((prev) =>
+                        prev.map((m) =>
+                            m.id === assistantMsgId
+                                ? { ...m, content: `Error: ${error}`, loading: false }
+                                : m
+                        )
+                    );
+                    setLoading(false);
+                },
+            }
+        );
     };
 
     const toggleDoc = (id: string) => {

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import {
     FileText,
@@ -10,12 +10,15 @@ import {
     ChevronLeft,
     ChevronRight,
     Sparkles,
+    Trash2,
+    Plus,
 } from "lucide-react";
 import { ThemeToggle } from "./theme-toggle";
 import { useState, useEffect } from "react";
+import { api, type Conversation } from "@/lib/api";
 
 const navItems = [
-    { href: "/", label: "Documents", icon: FileText },
+    { href: "/documents", label: "Documents", icon: FileText },
     { href: "/chat", label: "Chat", icon: MessageSquare },
 ];
 
@@ -24,11 +27,46 @@ export function Sidebar() {
     const router = useRouter();
     const [collapsed, setCollapsed] = useState(false);
     const [userEmail, setUserEmail] = useState<string | null>(null);
+    const searchParams = useSearchParams();
+    const [conversations, setConversations] = useState<Conversation[]>([]);
+    const [loadingHistory, setLoadingHistory] = useState(false);
 
     useEffect(() => {
         const email = localStorage.getItem("user_email");
         setUserEmail(email);
-    }, []);
+
+        if (pathname === "/chat") {
+            loadConversations();
+        }
+    }, [pathname]);
+
+    const loadConversations = async () => {
+        setLoadingHistory(true);
+        try {
+            const res = await api.listConversations();
+            setConversations(res);
+        } catch (err) {
+            console.error("Failed to load conversations", err);
+        } finally {
+            setLoadingHistory(false);
+        }
+    };
+
+    const handleDeleteConversation = async (e: React.MouseEvent, id: string) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!confirm("Are you sure you want to delete this conversation?")) return;
+
+        try {
+            await api.deleteConversation(id);
+            setConversations((prev) => prev.filter((c) => c.id !== id));
+            if (searchParams.get("id") === id) {
+                router.push("/chat");
+            }
+        } catch (err) {
+            alert("Failed to delete conversation");
+        }
+    };
 
     const handleLogout = () => {
         localStorage.removeItem("access_token");
@@ -89,6 +127,62 @@ export function Sidebar() {
                         </Link>
                     );
                 })}
+
+                {/* Chat History Section */}
+                {pathname === "/chat" && !collapsed && (
+                    <div className="mt-6">
+                        <div className="flex items-center justify-between px-3 mb-2">
+                            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                                Recent Chats
+                            </span>
+                            <button
+                                onClick={() => router.push("/chat")}
+                                className="p-1 rounded hover:bg-secondary text-primary transition-colors"
+                                title="New Chat"
+                            >
+                                <Plus size={14} />
+                            </button>
+                        </div>
+
+                        <div className="space-y-1 max-h-[40vh] overflow-y-auto pr-1 thin-scrollbar">
+                            {conversations.map((conv) => {
+                                const isActive = searchParams.get("id") === conv.id;
+                                return (
+                                    <Link key={conv.id} href={`/chat?id=${conv.id}`}>
+                                        <div
+                                            className={`group flex items-center justify-between px-3 py-2 rounded-lg cursor-pointer transition-all ${isActive ? "bg-secondary text-foreground" : "text-muted-foreground hover:bg-secondary/50"
+                                                }`}
+                                        >
+                                            <div className="flex items-center gap-3 overflow-hidden">
+                                                <MessageSquare size={16} className="flex-shrink-0" />
+                                                <span className="text-sm truncate">{conv.title}</span>
+                                            </div>
+                                            <button
+                                                onClick={(e) => handleDeleteConversation(e, conv.id)}
+                                                className="opacity-0 group-hover:opacity-100 p-1 hover:text-danger transition-opacity"
+                                            >
+                                                <Trash2 size={14} />
+                                            </button>
+                                        </div>
+                                    </Link>
+                                );
+                            })}
+
+                            {!loadingHistory && conversations.length === 0 && (
+                                <p className="text-xs text-center py-4 text-muted-foreground italic">
+                                    No history yet
+                                </p>
+                            )}
+
+                            {loadingHistory && (
+                                <div className="space-y-2 px-3">
+                                    <div className="h-8 w-full bg-secondary animate-pulse rounded-lg" />
+                                    <div className="h-8 w-full bg-secondary animate-pulse rounded-lg" />
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                )}
             </nav>
 
             {/* Bottom */}

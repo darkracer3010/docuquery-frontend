@@ -82,6 +82,10 @@ class ApiClient {
         return this.request<Document>(`/documents/${id}`);
     }
 
+    async getDocumentProgress(id: string) {
+        return this.request<DocumentProgress>(`/documents/${id}/progress`);
+    }
+
     async deleteDocument(id: string) {
         return this.request<{ message: string }>(`/documents/${id}`, {
             method: "DELETE",
@@ -93,6 +97,103 @@ class ApiClient {
         return this.request<QAResponse>("/qa/ask", {
             method: "POST",
             body: JSON.stringify({ question, document_ids: documentIds }),
+        });
+    }
+
+    async askQuestionStream(
+        question: string,
+        documentIds: string[] | undefined,
+        conversationId: string | undefined,
+        callbacks: {
+            onToken: (token: string) => void;
+            onSources: (sources: SourceCitation[]) => void;
+            onMetadata: (metadata: RetrievalMetadata) => void;
+            onDone: () => void;
+            onError: (error: string) => void;
+        }
+    ) {
+        const token = this.getToken();
+        const headers: Record<string, string> = {
+            "Content-Type": "application/json",
+        };
+        if (token) headers["Authorization"] = `Bearer ${token}`;
+
+        try {
+            const response = await fetch(`${API_BASE}/qa/ask/stream`, {
+                method: "POST",
+                headers,
+                body: JSON.stringify({
+                    question,
+                    document_ids: documentIds,
+                    conversation_id: conversationId
+                }),
+            });
+
+            if (!response.ok) {
+                const error = await response.json().catch(() => ({ detail: "Request failed" }));
+                callbacks.onError(error.detail || `HTTP ${response.status}`);
+                return;
+            }
+
+            const reader = response.body?.getReader();
+            if (!reader) {
+                callbacks.onError("No response body");
+                return;
+            }
+
+            const decoder = new TextDecoder();
+            let buffer = "";
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+
+                buffer += decoder.decode(value, { stream: true });
+
+                // Parse complete SSE events from the buffer
+                const events = buffer.split("\n\n");
+                buffer = events.pop() || ""; // Keep incomplete event in buffer
+
+                for (const event of events) {
+                    if (!event.trim()) continue;
+
+                    const lines = event.split("\n");
+                    let eventType = "";
+                    let data = "";
+
+                    for (const line of lines) {
+                        if (line.startsWith("event: ")) eventType = line.slice(7);
+                        else if (line.startsWith("data: ")) data = line.slice(6);
+                    }
+
+                    if (eventType === "token" && data) {
+                        callbacks.onToken(JSON.parse(data));
+                    } else if (eventType === "sources" && data) {
+                        callbacks.onSources(JSON.parse(data));
+                    } else if (eventType === "metadata" && data) {
+                        callbacks.onMetadata(JSON.parse(data));
+                    } else if (eventType === "done") {
+                        callbacks.onDone();
+                    }
+                }
+            }
+        } catch (err) {
+            callbacks.onError(err instanceof Error ? err.message : "Stream failed");
+        }
+    }
+
+    // Conversations
+    async listConversations() {
+        return this.request<Conversation[]>("/qa/conversations");
+    }
+
+    async getConversationMessages(id: string) {
+        return this.request<ChatMessage[]>(`/qa/conversations/${id}/messages`);
+    }
+
+    async deleteConversation(id: string) {
+        return this.request<{ status: string }>(`/qa/conversations/${id}`, {
+            method: "DELETE",
         });
     }
 }
@@ -133,6 +234,12 @@ export interface DocumentList {
     total: number;
 }
 
+export interface DocumentProgress {
+    id: string;
+    status: string;
+    indexing_progress: number;
+}
+
 export interface SourceCitation {
     citation_index: number;
     document_name: string;
@@ -144,15 +251,39 @@ export interface SourceCitation {
     relevance_justification: string;
 }
 
+export interface RetrievalMetadata {
+    total_candidates: number;
+    after_reranking: number;
+    model_used: string;
+    cache_hit: boolean;
+    conversation_id?: string;
+    message_id?: string;
+}
+
 export interface QAResponse {
     answer: string;
     sources: SourceCitation[];
-    retrieval_metadata: {
-        total_candidates: number;
-        after_reranking: number;
-        model_used: string;
-        cache_hit: boolean;
-    };
+    retrieval_metadata: RetrievalMetadata;
+    conversation_id: string;
+    message_id: string;
+}
+
+export interface ChatMessage {
+    id: string;
+    conversation_id: string;
+    role: "user" | "assistant";
+    content: string;
+    sources?: SourceCitation[];
+    metadata?: any;
+    created_at: string;
+}
+
+export interface Conversation {
+    id: string;
+    user_id: string;
+    title: string;
+    created_at: string;
+    updated_at: string;
 }
 
 export const api = new ApiClient();
