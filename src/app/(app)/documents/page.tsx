@@ -10,11 +10,9 @@ import {
     AlertCircle,
     Loader2,
     Clock,
-    MessageSquare,
     CloudUpload,
     File,
 } from "lucide-react";
-import { useRouter } from "next/navigation";
 import { api, type Document } from "@/lib/api";
 
 const statusConfig: Record<string, { color: string; icon: React.ElementType; label: string }> = {
@@ -29,7 +27,6 @@ const SUPPORTED_TYPES = [
 ];
 
 export default function DashboardPage() {
-    const router = useRouter();
     const [documents, setDocuments] = useState<Document[]>([]);
     const [loading, setLoading] = useState(true);
     const [uploading, setUploading] = useState(false);
@@ -329,18 +326,6 @@ export default function DashboardPage() {
 
                                     {/* Actions */}
                                     <div className="flex gap-1">
-                                        {doc.status === "ready" && (
-                                            <motion.button
-                                                whileHover={{ scale: 1.1 }}
-                                                whileTap={{ scale: 0.9 }}
-                                                onClick={() => router.push(`/chat?doc=${doc.id}`)}
-                                                className="p-2 rounded-lg transition-colors"
-                                                style={{ color: "var(--primary)" }}
-                                                title="Chat about this document"
-                                            >
-                                                <MessageSquare size={16} />
-                                            </motion.button>
-                                        )}
                                         <motion.button
                                             whileHover={{ scale: 1.1 }}
                                             whileTap={{ scale: 0.9 }}

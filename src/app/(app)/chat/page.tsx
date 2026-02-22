@@ -12,12 +12,10 @@ import {
     Zap,
     BookOpen,
     Search,
-    X,
-    Check,
     Square,
 } from "lucide-react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { api, type QAResponse, type SourceCitation, type Document, type RetrievalMetadata } from "@/lib/api";
+import { api, type QAResponse, type SourceCitation, type RetrievalMetadata } from "@/lib/api";
 
 interface Message {
     id: string;
@@ -44,28 +42,12 @@ export default function ChatPage() {
     const [messages, setMessages] = useState<Message[]>([]);
     const [input, setInput] = useState("");
     const [loading, setLoading] = useState(false);
-    const [documents, setDocuments] = useState<Document[]>([]);
-    const [selectedDocs, setSelectedDocs] = useState<string[]>([]);
-    const [showDocPicker, setShowDocPicker] = useState(false);
     const [abortController, setAbortController] = useState<AbortController | null>(null);
     const [conversationId, setConversationId] = useState<string | undefined>(activeConvId || undefined);
     const [isInputFocused, setIsInputFocused] = useState(false);
 
     const scrollRef = useRef<HTMLDivElement>(null);
 
-    useEffect(() => {
-        api.listDocuments().then((res) => {
-            const readyDocs = res.documents.filter((d) => d.status === "ready");
-            setDocuments(readyDocs);
-
-            const docId = searchParams.get("doc");
-            if (docId && readyDocs.some((d) => d.id === docId)) {
-                setSelectedDocs([docId]);
-            }
-        });
-    }, [searchParams]);
-
-    // Load messages if conversation ID changes
     useEffect(() => {
         if (activeConvId) {
             setConversationId(activeConvId);
@@ -130,7 +112,7 @@ export default function ChatPage() {
 
         await api.askQuestionStream(
             q,
-            selectedDocs.length > 0 ? selectedDocs : undefined,
+            undefined, // Always query all documents
             conversationId,
             {
                 onToken: (token) => {
@@ -213,21 +195,6 @@ export default function ChatPage() {
         }
     };
 
-    const toggleDoc = (id: string) => {
-        const next = selectedDocs.includes(id) ? selectedDocs.filter((d) => d !== id) : [...selectedDocs, id];
-
-        // Sync with URL if only one doc is selected, or clear it
-        const url = new URL(window.location.href);
-        if (next.length === 1) {
-            url.searchParams.set("doc", next[0]);
-        } else {
-            url.searchParams.delete("doc");
-        }
-        window.history.replaceState({}, "", url.toString());
-
-        setSelectedDocs(next);
-    };
-
     return (
         <div className="h-full flex flex-col">
             {/* Header */}
@@ -240,85 +207,6 @@ export default function ChatPage() {
                     <h1 className="font-semibold text-sm sm:text-base" style={{ color: "var(--foreground)" }}>
                         DocuQuery Chat
                     </h1>
-                </div>
-
-                {/* Document filter */}
-                <div className="relative">
-                    <button
-                        onClick={() => setShowDocPicker(!showDocPicker)}
-                        className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm transition-colors border"
-                        style={{
-                            background: "var(--secondary)",
-                            borderColor: "var(--border)",
-                            color: "var(--foreground)",
-                        }}
-                    >
-                        <FileText size={14} />
-                        {selectedDocs.length > 0 ? `${selectedDocs.length} doc(s)` : "All documents"}
-                        <ChevronDown size={14} />
-                    </button>
-
-                    <AnimatePresence>
-                        {showDocPicker && (
-                            <motion.div
-                                initial={{ opacity: 0, y: -8 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                exit={{ opacity: 0, y: -8 }}
-                                className="absolute right-0 top-full mt-2 w-72 rounded-xl border p-2 z-50 shadow-lg"
-                                style={{ background: "var(--card)", borderColor: "var(--border)" }}
-                            >
-                                <div className="flex items-center justify-between px-2 pb-2 border-b" style={{ borderColor: "var(--border)" }}>
-                                    <span className="text-xs font-medium" style={{ color: "var(--muted-foreground)" }}>
-                                        Filter by document
-                                    </span>
-                                    {selectedDocs.length > 0 && (
-                                        <button
-                                            onClick={() => setSelectedDocs([])}
-                                            className="text-xs px-2 py-0.5 rounded"
-                                            style={{ color: "var(--primary)" }}
-                                        >
-                                            Clear
-                                        </button>
-                                    )}
-                                </div>
-                                <div className="max-h-48 overflow-y-auto mt-1">
-                                    {documents.map((doc) => (
-                                        <button
-                                            key={doc.id}
-                                            onClick={() => toggleDoc(doc.id)}
-                                            className="w-full flex items-center gap-2 px-2 py-2 rounded-lg text-sm text-left transition-colors hover:opacity-80"
-                                            style={{
-                                                background: selectedDocs.includes(doc.id)
-                                                    ? "rgba(99,102,241,0.1)"
-                                                    : "transparent",
-                                                color: "var(--foreground)",
-                                            }}
-                                        >
-                                            <div
-                                                className="w-4 h-4 rounded border flex items-center justify-center flex-shrink-0"
-                                                style={{
-                                                    borderColor: selectedDocs.includes(doc.id)
-                                                        ? "var(--primary)"
-                                                        : "var(--border)",
-                                                    background: selectedDocs.includes(doc.id)
-                                                        ? "var(--primary)"
-                                                        : "transparent",
-                                                }}
-                                            >
-                                                {selectedDocs.includes(doc.id) && <Check size={10} color="white" />}
-                                            </div>
-                                            <span className="truncate">{doc.file_name}</span>
-                                        </button>
-                                    ))}
-                                    {documents.length === 0 && (
-                                        <p className="text-xs text-center py-4" style={{ color: "var(--muted-foreground)" }}>
-                                            No documents ready
-                                        </p>
-                                    )}
-                                </div>
-                            </motion.div>
-                        )}
-                    </AnimatePresence>
                 </div>
             </div>
 
