@@ -53,18 +53,28 @@ export function Sidebar() {
     };
 
     const handleDeleteConversation = async (e: React.MouseEvent, id: string) => {
+        // Stop all propagation immediately
         e.preventDefault();
         e.stopPropagation();
-        if (!confirm("Are you sure you want to delete this conversation?")) return;
+        e.nativeEvent.stopImmediatePropagation();
+
+        console.log("Delete clicked for", id);
 
         try {
+            console.log("Sending delete request...");
             await api.deleteConversation(id);
+            console.log("Delete successful!");
+
+            // Immediately update UI
             setConversations((prev) => prev.filter((c) => c.id !== id));
+
+            // If the deleted conversation is the active one, redirect to new chat
             if (searchParams.get("id") === id) {
                 router.push("/chat");
             }
         } catch (err) {
-            alert("Failed to delete conversation");
+            console.error("Delete failed:", err);
+            alert("Failed to delete conversation: " + (err instanceof Error ? err.message : String(err)));
         }
     };
 
@@ -148,23 +158,29 @@ export function Sidebar() {
                             {conversations.map((conv) => {
                                 const isActive = searchParams.get("id") === conv.id;
                                 return (
-                                    <Link key={conv.id} href={`/chat?id=${conv.id}`}>
-                                        <div
-                                            className={`group flex items-center justify-between px-3 py-2 rounded-lg cursor-pointer transition-all ${isActive ? "bg-secondary text-foreground" : "text-muted-foreground hover:bg-secondary/50"
-                                                }`}
-                                        >
-                                            <div className="flex items-center gap-3 overflow-hidden">
-                                                <MessageSquare size={16} className="flex-shrink-0" />
-                                                <span className="text-sm truncate">{conv.title}</span>
-                                            </div>
-                                            <button
-                                                onClick={(e) => handleDeleteConversation(e, conv.id)}
-                                                className="opacity-0 group-hover:opacity-100 p-1 hover:text-danger transition-opacity"
+                                    <div key={conv.id} className="relative group">
+                                        <Link href={`/chat?id=${conv.id}`}>
+                                            <div
+                                                className={`flex items-center justify-between px-3 py-2 rounded-lg cursor-pointer transition-all ${isActive ? "bg-secondary text-foreground" : "text-muted-foreground hover:bg-secondary/50"
+                                                    }`}
                                             >
-                                                <Trash2 size={14} />
-                                            </button>
-                                        </div>
-                                    </Link>
+                                                <div className="flex items-center gap-3 overflow-hidden">
+                                                    <MessageSquare size={16} className="flex-shrink-0" />
+                                                    <span className="text-sm truncate">{conv.title}</span>
+                                                </div>
+                                                {/* Empty spacer for the absolute button */}
+                                                <div className="w-6 flex-shrink-0" />
+                                            </div>
+                                        </Link>
+                                        <button
+                                            onClick={(e) => handleDeleteConversation(e, conv.id)}
+                                            className="absolute right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 p-1 hover:text-danger transition-opacity z-10"
+                                            title="Delete conversation"
+                                        >
+                                            <Trash2 size={14} />
+                                        </button>
+                                    </div>
+
                                 );
                             })}
 

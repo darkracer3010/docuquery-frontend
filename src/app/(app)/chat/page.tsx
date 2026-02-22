@@ -14,6 +14,7 @@ import {
     Search,
     X,
     Check,
+    Square,
 } from "lucide-react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { api, type QAResponse, type SourceCitation, type Document, type RetrievalMetadata } from "@/lib/api";
@@ -46,6 +47,7 @@ export default function ChatPage() {
     const [documents, setDocuments] = useState<Document[]>([]);
     const [selectedDocs, setSelectedDocs] = useState<string[]>([]);
     const [showDocPicker, setShowDocPicker] = useState(false);
+    const [abortController, setAbortController] = useState<AbortController | null>(null);
     const [conversationId, setConversationId] = useState<string | undefined>(activeConvId || undefined);
 
     const scrollRef = useRef<HTMLDivElement>(null);
@@ -119,6 +121,9 @@ export default function ChatPage() {
         setInput("");
         setLoading(true);
 
+        const controller = new AbortController();
+        setAbortController(controller);
+
         // Keep track if we need to update the URL after the first response
         let firstToken = true;
 
@@ -163,23 +168,51 @@ export default function ChatPage() {
                     setLoading(false);
                 },
                 onError: (error) => {
-                    setMessages((prev) =>
-                        prev.map((m) =>
-                            m.id === assistantMsgId
-                                ? { ...m, content: `Error: ${error}`, loading: false }
-                                : m
-                        )
-                    );
+                    if (error !== "AbortError") {
+                        setMessages((prev) =>
+                            prev.map((m) =>
+                                m.id === assistantMsgId
+                                    ? { ...m, content: `Error: ${error}`, loading: false }
+                                    : m
+                            )
+                        );
+                    }
                     setLoading(false);
+                    setAbortController(null);
                 },
-            }
+            },
+            controller.signal
         );
+
+        setAbortController(null);
+    };
+
+    const handleStop = () => {
+        if (abortController) {
+            abortController.abort();
+            setAbortController(null);
+            setLoading(false);
+            setMessages((prev) =>
+                prev.map((m) =>
+                    m.loading ? { ...m, loading: false } : m
+                )
+            );
+        }
     };
 
     const toggleDoc = (id: string) => {
-        setSelectedDocs((prev) =>
-            prev.includes(id) ? prev.filter((d) => d !== id) : [...prev, id]
-        );
+        const next = selectedDocs.includes(id) ? selectedDocs.filter((d) => d !== id) : [...selectedDocs, id];
+
+        // Sync with URL if only one doc is selected, or clear it
+        const url = new URL(window.location.href);
+        if (next.length === 1) {
+            url.searchParams.set("doc", next[0]);
+        } else {
+            url.searchParams.delete("doc");
+        }
+        window.history.replaceState({}, "", url.toString());
+
+        setSelectedDocs(next);
     };
 
     return (
@@ -292,33 +325,58 @@ export default function ChatPage() {
             {/* Input */}
             <div className="px-6 pb-4 pt-2 flex-shrink-0">
                 <div
-                    className="flex items-center gap-2 rounded-xl border px-4 py-2 transition-all focus-within:ring-2"
+                    className="flex items-end gap-2 rounded-xl border px-4 py-3 transition-all focus-within:ring-2"
                     style={{
                         background: "var(--card)",
                         borderColor: "var(--border)",
                         ["--tw-ring-color" as string]: "var(--ring)",
                     }}
                 >
-                    <input
-                        type="text"
+                    <textarea
                         value={input}
                         onChange={(e) => setInput(e.target.value)}
-                        onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSend()}
+                        onKeyDown={(e) => {
+                            if (e.key === "Enter" && !e.shiftKey) {
+                                e.preventDefault();
+                                handleSend();
+                            }
+                        }}
                         placeholder="Ask a question about your documents..."
-                        className="flex-1 py-2 bg-transparent outline-none text-sm"
+                        className="flex-1 py-1 bg-transparent outline-none text-sm resize-none max-h-32"
+                        rows={1}
                         style={{ color: "var(--foreground)" }}
-                        disabled={loading}
+                        disabled={loading && !abortController}
+                        onInput={(e) => {
+                            const target = e.target as HTMLTextAreaElement;
+                            target.style.height = "auto";
+                            target.style.height = `${target.scrollHeight}px`;
+                        }}
                     />
-                    <motion.button
-                        whileHover={{ scale: 1.1 }}
-                        whileTap={{ scale: 0.9 }}
-                        onClick={() => handleSend()}
-                        disabled={loading || !input.trim()}
-                        className="p-2 rounded-lg transition-colors disabled:opacity-30"
-                        style={{ background: "var(--primary)", color: "white" }}
-                    >
-                        <Send size={16} />
-                    </motion.button>
+                    <div className="flex items-center gap-2 mb-1">
+                        {loading && abortController ? (
+                            <motion.button
+                                whileHover={{ scale: 1.1 }}
+                                whileTap={{ scale: 0.9 }}
+                                onClick={handleStop}
+                                className="p-2 rounded-lg transition-colors"
+                                style={{ background: "var(--danger)", color: "white" }}
+                                title="Stop generation"
+                            >
+                                <Square size={16} fill="white" />
+                            </motion.button>
+                        ) : (
+                            <motion.button
+                                whileHover={{ scale: 1.1 }}
+                                whileTap={{ scale: 0.9 }}
+                                onClick={() => handleSend()}
+                                disabled={loading || !input.trim()}
+                                className="p-2 rounded-lg transition-colors disabled:opacity-30"
+                                style={{ background: "var(--primary)", color: "white" }}
+                            >
+                                <Send size={16} />
+                            </motion.button>
+                        )}
+                    </div>
                 </div>
             </div>
         </div>
@@ -393,9 +451,9 @@ function MessageBubble({ message }: { message: Message }) {
             </div>
 
             {/* Content */}
-            <div className={`max-w-2xl ${isUser ? "text-right" : ""}`}>
+            <div className="max-w-2xl">
                 <div
-                    className="rounded-2xl px-4 py-3 text-sm leading-relaxed"
+                    className="rounded-2xl px-4 py-3 text-sm leading-relaxed text-left"
                     style={{
                         background: isUser ? "var(--primary)" : "var(--card)",
                         color: isUser ? "white" : "var(--foreground)",

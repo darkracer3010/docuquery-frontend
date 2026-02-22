@@ -3,7 +3,25 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 class ApiClient {
     private getToken(): string | null {
         if (typeof window === "undefined") return null;
-        return localStorage.getItem("access_token");
+        const token = localStorage.getItem("access_token");
+        if (token && this.isTokenExpired(token)) {
+            localStorage.removeItem("access_token");
+            return null;
+        }
+        return token;
+    }
+
+    private isTokenExpired(token: string): boolean {
+        try {
+            const payload = JSON.parse(atob(token.split(".")[1]));
+            return payload.exp * 1000 < Date.now();
+        } catch (e) {
+            return true;
+        }
+    }
+
+    public isAuthenticated(): boolean {
+        return !!this.getToken();
     }
 
     private async request<T>(
@@ -110,7 +128,8 @@ class ApiClient {
             onMetadata: (metadata: RetrievalMetadata) => void;
             onDone: () => void;
             onError: (error: string) => void;
-        }
+        },
+        signal?: AbortSignal
     ) {
         const token = this.getToken();
         const headers: Record<string, string> = {
@@ -127,6 +146,7 @@ class ApiClient {
                     document_ids: documentIds,
                     conversation_id: conversationId
                 }),
+                signal
             });
 
             if (!response.ok) {

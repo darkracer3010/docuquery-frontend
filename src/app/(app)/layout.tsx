@@ -3,14 +3,14 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Sidebar } from "@/components/sidebar";
+import { api } from "@/lib/api";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
     const router = useRouter();
     const [authenticated, setAuthenticated] = useState(false);
 
     useEffect(() => {
-        const token = localStorage.getItem("access_token");
-        if (!token) {
+        if (!api.isAuthenticated()) {
             router.push("/login");
         } else {
             setAuthenticated(true);

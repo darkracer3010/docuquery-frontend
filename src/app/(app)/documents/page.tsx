@@ -67,7 +67,18 @@ export default function DashboardPage() {
         if (processingDocs.size === 0) return;
 
         const pollProgress = async () => {
-            for (const docId of Array.from(processingDocs)) {
+            const currentIds = Array.from(processingDocs);
+            for (const docId of currentIds) {
+                // Skip if document was removed from UI state already (e.g. by handleDelete)
+                if (!documents.some(d => d.id === docId)) {
+                    setProcessingDocs(prev => {
+                        const next = new Set(prev);
+                        next.delete(docId);
+                        return next;
+                    });
+                    continue;
+                }
+
                 try {
                     const progress = await api.getDocumentProgress(docId);
 
@@ -95,7 +106,15 @@ export default function DashboardPage() {
                             // ignore — we already have the status updated
                         }
                     }
-                } catch (err) {
+                } catch (err: any) {
+                    // If 404, the document is gone, stop polling
+                    if (err.message?.includes("404") || err.status === 404) {
+                        setProcessingDocs(prev => {
+                            const next = new Set(prev);
+                            next.delete(docId);
+                            return next;
+                        });
+                    }
                     console.error(`Failed to poll progress for ${docId}:`, err);
                 }
             }
@@ -103,7 +122,7 @@ export default function DashboardPage() {
 
         const interval = setInterval(pollProgress, 1500);
         return () => clearInterval(interval);
-    }, [processingDocs]);
+    }, [processingDocs, documents]);
 
     const handleUpload = async (files: FileList | File[]) => {
         setUploading(true);
@@ -131,11 +150,19 @@ export default function DashboardPage() {
     };
 
     const handleDelete = async (id: string) => {
+        // Optimistically update UI and stop polling
+        setProcessingDocs(prev => {
+            const next = new Set(prev);
+            next.delete(id);
+            return next;
+        });
+        setDocuments((prev) => prev.filter((d) => d.id !== id));
+
         try {
             await api.deleteDocument(id);
-            setDocuments((prev) => prev.filter((d) => d.id !== id));
         } catch (err) {
             console.error("Delete failed:", err);
+            // Revert on error? For now just log, document is likely already gone or error is unrecoverable
         }
     };
 
