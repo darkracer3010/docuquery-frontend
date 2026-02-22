@@ -128,3 +128,19 @@ body {
 .light .glass {
   background: rgba(255, 255, 255, 0.8);
 }
+/* H
+ide mobile menu button when chat input is focused (keyboard visible) */
+body.chat-input-focused .lg\:hidden.fixed.bottom-4 {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Thin scrollbar for chat history */
+.thin-scrollbar::-webkit-scrollbar {
+  width: 4px;
+}
+
+.thin-scrollbar::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 2px;
+}

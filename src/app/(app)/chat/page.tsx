@@ -49,6 +49,7 @@ export default function ChatPage() {
     const [showDocPicker, setShowDocPicker] = useState(false);
     const [abortController, setAbortController] = useState<AbortController | null>(null);
     const [conversationId, setConversationId] = useState<string | undefined>(activeConvId || undefined);
+    const [isInputFocused, setIsInputFocused] = useState(false);
 
     const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -335,7 +336,10 @@ export default function ChatPage() {
             </div>
 
             {/* Input */}
-            <div className="px-4 sm:px-6 pb-4 pt-2 flex-shrink-0">
+            <div 
+                className="px-4 sm:px-6 pb-4 pt-2 flex-shrink-0"
+                data-input-focused={isInputFocused}
+            >
                 <div
                     className="flex items-end gap-2 rounded-xl border px-4 py-3 transition-all focus-within:ring-2"
                     style={{
@@ -352,6 +356,14 @@ export default function ChatPage() {
                                 e.preventDefault();
                                 handleSend();
                             }
+                        }}
+                        onFocus={() => {
+                            setIsInputFocused(true);
+                            document.body.classList.add('chat-input-focused');
+                        }}
+                        onBlur={() => {
+                            setIsInputFocused(false);
+                            document.body.classList.remove('chat-input-focused');
                         }}
                         placeholder="Ask a question about your documents..."
                         className="flex-1 py-1 bg-transparent outline-none text-sm resize-none max-h-32"

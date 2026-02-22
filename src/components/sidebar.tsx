@@ -271,10 +271,10 @@ export function Sidebar() {
             </div>
         </motion.aside>
         
-        {/* Mobile menu button */}
+        {/* Mobile menu button - hidden when chat input is focused */}
         <button
             onClick={() => setMobileOpen(!mobileOpen)}
-            className="lg:hidden fixed bottom-4 left-4 z-50 p-3 rounded-full shadow-lg"
+            className="lg:hidden fixed bottom-4 left-4 z-50 p-3 rounded-full shadow-lg transition-opacity duration-200 chat-input-focused:opacity-0 chat-input-focused:pointer-events-none"
             style={{ background: "var(--primary)", color: "white" }}
         >
             <MessageSquare size={24} />
