@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { Sun, Moon } from "lucide-react";
 import { motion } from "framer-motion";
 
-export function ThemeToggle() {
+export function ThemeToggle({ collapsed = false }: { collapsed?: boolean }) {
     const { theme, setTheme } = useTheme();
     const [mounted, setMounted] = useState(false);
 
@@ -20,6 +20,7 @@ export function ThemeToggle() {
             className="p-2 rounded-lg transition-colors"
             style={{ background: "var(--secondary)", color: "var(--foreground)" }}
             aria-label="Toggle theme"
+            title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
         >
             {theme === "dark" ? <Sun size={18} /> : <Moon size={18} />}
         </motion.button>

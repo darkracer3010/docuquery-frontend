@@ -191,13 +191,13 @@ export default function DashboardPage() {
     };
 
     return (
-        <div className="p-6 max-w-5xl mx-auto space-y-6">
+        <div className="p-4 sm:p-6 max-w-5xl mx-auto space-y-6">
             {/* Header */}
             <div>
-                <h1 className="text-2xl font-bold" style={{ color: "var(--foreground)" }}>
+                <h1 className="text-xl sm:text-2xl font-bold" style={{ color: "var(--foreground)" }}>
                     Documents
                 </h1>
-                <p className="text-sm mt-1" style={{ color: "var(--muted-foreground)" }}>
+                <p className="text-xs sm:text-sm mt-1" style={{ color: "var(--muted-foreground)" }}>
                     Upload and manage your documents for AI-powered Q&A
                 </p>
             </div>
@@ -209,7 +209,7 @@ export default function DashboardPage() {
                 onDrop={handleDrop}
                 onClick={() => fileInputRef.current?.click()}
                 whileHover={{ scale: 1.01 }}
-                className="border-2 border-dashed rounded-2xl p-10 text-center cursor-pointer transition-all"
+                className="border-2 border-dashed rounded-2xl p-6 sm:p-10 text-center cursor-pointer transition-all"
                 style={{
                     borderColor: dragOver ? "var(--primary)" : "var(--border)",
                     background: dragOver ? "rgba(99,102,241,0.05)" : "var(--card)",

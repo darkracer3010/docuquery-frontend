@@ -26,6 +26,7 @@ export function Sidebar() {
     const pathname = usePathname();
     const router = useRouter();
     const [collapsed, setCollapsed] = useState(false);
+    const [mobileOpen, setMobileOpen] = useState(false);
     const [userEmail, setUserEmail] = useState<string | null>(null);
     const searchParams = useSearchParams();
     const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -38,6 +39,19 @@ export function Sidebar() {
         if (pathname === "/chat") {
             loadConversations();
         }
+
+        // Listen for conversation updates
+        const handleConversationUpdate = () => {
+            if (pathname === "/chat") {
+                loadConversations();
+            }
+        };
+        
+        window.addEventListener('conversationUpdated', handleConversationUpdate);
+        
+        return () => {
+            window.removeEventListener('conversationUpdated', handleConversationUpdate);
+        };
     }, [pathname]);
 
     const loadConversations = async () => {
@@ -87,16 +101,30 @@ export function Sidebar() {
     };
 
     return (
-        <motion.aside
-            initial={false}
-            animate={{ width: collapsed ? 72 : 260 }}
-            transition={{ duration: 0.2, ease: "easeInOut" }}
-            className="h-screen flex flex-col border-r sticky top-0"
-            style={{
-                background: "var(--card)",
-                borderColor: "var(--border)",
-            }}
-        >
+        <>
+            {/* Mobile overlay */}
+            {mobileOpen && (
+                <div 
+                    className="fixed inset-0 bg-black/50 z-40 lg:hidden"
+                    onClick={() => setMobileOpen(false)}
+                />
+            )}
+            
+            {/* Sidebar */}
+            <motion.aside
+                initial={false}
+                animate={{ 
+                    width: collapsed ? 72 : 260,
+                }}
+                transition={{ duration: 0.2, ease: "easeInOut" }}
+                className={`h-screen flex flex-col border-r sticky top-0 z-50 ${
+                    mobileOpen ? 'fixed left-0' : 'hidden lg:flex'
+                }`}
+                style={{
+                    background: "var(--card)",
+                    borderColor: "var(--border)",
+                }}
+            >
             {/* Logo */}
             <div className="p-4 flex items-center gap-3 border-b" style={{ borderColor: "var(--border)" }}>
                 <div
@@ -213,8 +241,8 @@ export function Sidebar() {
                     </div>
                 )}
 
-                <div className="flex items-center justify-between gap-2">
-                    <ThemeToggle />
+                <div className={`flex items-center gap-2 ${collapsed ? 'flex-col' : 'justify-between'}`}>
+                    <ThemeToggle collapsed={collapsed} />
 
                     <motion.button
                         whileHover={{ scale: 1.1 }}
@@ -223,6 +251,7 @@ export function Sidebar() {
                         className="p-2 rounded-lg transition-colors"
                         style={{ background: "var(--secondary)", color: "var(--danger)" }}
                         aria-label="Logout"
+                        title="Logout"
                     >
                         <LogOut size={18} />
                     </motion.button>
@@ -234,11 +263,22 @@ export function Sidebar() {
                         className="p-2 rounded-lg transition-colors"
                         style={{ background: "var(--secondary)", color: "var(--foreground)" }}
                         aria-label="Toggle sidebar"
+                        title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
                     >
                         {collapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
                     </motion.button>
                 </div>
             </div>
         </motion.aside>
+        
+        {/* Mobile menu button */}
+        <button
+            onClick={() => setMobileOpen(!mobileOpen)}
+            className="lg:hidden fixed bottom-4 right-4 z-50 p-3 rounded-full shadow-lg"
+            style={{ background: "var(--primary)", color: "white" }}
+        >
+            <MessageSquare size={24} />
+        </button>
+    </>
     );
 }

@@ -35,8 +35,19 @@ export default function LoginPage() {
             } else {
                 setError(tab === "signup" ? "Check your email to confirm signup." : "Login failed.");
             }
-        } catch (err) {
-            setError(err instanceof Error ? err.message : "Something went wrong");
+        } catch (err: any) {
+            // Better error message extraction
+            let errorMsg = "Something went wrong";
+            if (err instanceof Error) {
+                errorMsg = err.message;
+            } else if (typeof err === 'string') {
+                errorMsg = err;
+            } else if (err?.detail) {
+                errorMsg = err.detail;
+            } else if (err?.message) {
+                errorMsg = err.message;
+            }
+            setError(errorMsg);
         } finally {
             setLoading(false);
         }

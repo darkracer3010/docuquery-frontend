@@ -48,7 +48,27 @@ class ApiClient {
 
         if (!response.ok) {
             const error = await response.json().catch(() => ({ detail: "Request failed" }));
-            throw new Error(error.detail || `HTTP ${response.status}`);
+            
+            // Extract meaningful error message
+            let errorMessage = `HTTP ${response.status}`;
+            
+            if (typeof error === 'string') {
+                errorMessage = error;
+            } else if (error.detail) {
+                // Handle both string details and array of validation errors
+                if (typeof error.detail === 'string') {
+                    errorMessage = error.detail;
+                } else if (Array.isArray(error.detail)) {
+                    // FastAPI validation errors
+                    errorMessage = error.detail.map((e: any) => e.msg || e.message || JSON.stringify(e)).join(', ');
+                } else if (typeof error.detail === 'object') {
+                    errorMessage = JSON.stringify(error.detail);
+                }
+            } else if (error.message) {
+                errorMessage = error.message;
+            }
+            
+            throw new Error(errorMessage);
         }
 
         return response.json();
@@ -197,8 +217,13 @@ class ApiClient {
                     }
                 }
             }
-        } catch (err) {
-            callbacks.onError(err instanceof Error ? err.message : "Stream failed");
+        } catch (err: any) {
+            // Better error handling for aborted streams
+            if (err.name === 'AbortError' || err.message?.includes('aborted')) {
+                callbacks.onError("Request was aborted");
+            } else {
+                callbacks.onError(err instanceof Error ? err.message : "Stream failed");
+            }
         }
     }
 

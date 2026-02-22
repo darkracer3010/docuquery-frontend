@@ -166,9 +166,21 @@ export default function ChatPage() {
                 },
                 onDone: () => {
                     setLoading(false);
+                    // Trigger event to refresh conversation list in sidebar
+                    window.dispatchEvent(new CustomEvent('conversationUpdated'));
                 },
                 onError: (error) => {
-                    if (error !== "AbortError") {
+                    // Handle abort gracefully - just stop loading, don't show error
+                    if (error.includes("aborted") || error.includes("AbortError") || error.includes("BodyStreamBuffer")) {
+                        setMessages((prev) =>
+                            prev.map((m) =>
+                                m.id === assistantMsgId && m.loading
+                                    ? { ...m, loading: false, content: m.content || "Response stopped." }
+                                    : m
+                            )
+                        );
+                    } else {
+                        // Show actual errors
                         setMessages((prev) =>
                             prev.map((m) =>
                                 m.id === assistantMsgId
@@ -219,12 +231,12 @@ export default function ChatPage() {
         <div className="h-full flex flex-col">
             {/* Header */}
             <div
-                className="px-6 py-3 border-b flex items-center justify-between flex-shrink-0"
+                className="px-4 sm:px-6 py-3 border-b flex items-center justify-between flex-shrink-0"
                 style={{ borderColor: "var(--border)", background: "var(--card)" }}
             >
                 <div className="flex items-center gap-2">
                     <Sparkles size={18} style={{ color: "var(--primary)" }} />
-                    <h1 className="font-semibold" style={{ color: "var(--foreground)" }}>
+                    <h1 className="font-semibold text-sm sm:text-base" style={{ color: "var(--foreground)" }}>
                         DocuQuery Chat
                     </h1>
                 </div>
@@ -310,7 +322,7 @@ export default function ChatPage() {
             </div>
 
             {/* Messages */}
-            <div ref={scrollRef} className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
+            <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 sm:px-6 py-4 space-y-4">
                 {messages.length === 0 ? (
                     <EmptyState onSuggestion={handleSend} />
                 ) : (
@@ -323,7 +335,7 @@ export default function ChatPage() {
             </div>
 
             {/* Input */}
-            <div className="px-6 pb-4 pt-2 flex-shrink-0">
+            <div className="px-4 sm:px-6 pb-4 pt-2 flex-shrink-0">
                 <div
                     className="flex items-end gap-2 rounded-xl border px-4 py-3 transition-all focus-within:ring-2"
                     style={{
